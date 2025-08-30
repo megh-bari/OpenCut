@@ -2,7 +2,8 @@
 
 import { useDragDrop } from "@/hooks/use-drag-drop";
 import { processMediaFiles } from "@/lib/media-processing";
-import { useMediaStore, type MediaItem } from "@/stores/media-store";
+import { useMediaStore } from "@/stores/media-store";
+import { MediaFile } from "@/types/media";
 import {
   ArrowDown01,
   CloudUpload,
@@ -11,10 +12,10 @@ import {
   List,
   Loader2,
   Music,
-  Search,
   Video,
 } from "lucide-react";
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useRef, useState, useMemo } from "react";
+import { useHighlightScroll } from "@/hooks/use-highlight-scroll";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { MediaDragOverlay } from "@/components/editor/media-panel/drag-overlay";
@@ -33,7 +34,6 @@ import {
 import { DraggableMediaItem } from "@/components/ui/draggable-item";
 import { useProjectStore } from "@/stores/project-store";
 import { useTimelineStore } from "@/stores/timeline-store";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Tooltip,
   TooltipContent,
@@ -41,13 +41,14 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { usePanelStore } from "@/stores/panel-store";
+import { useMediaPanelStore } from "../store";
 
 function MediaItemWithContextMenu({
   item,
   children,
   onRemove,
 }: {
-  item: MediaItem;
+  item: MediaFile;
   children: React.ReactNode;
   onRemove: (e: React.MouseEvent, id: string) => Promise<void>;
 }) {
@@ -68,18 +69,21 @@ function MediaItemWithContextMenu({
 }
 
 export function MediaView() {
-  const { mediaItems, addMediaItem, removeMediaItem } = useMediaStore();
+  const { mediaFiles, addMediaFile, removeMediaFile } = useMediaStore();
   const { activeProject } = useProjectStore();
   const { mediaViewMode, setMediaViewMode } = usePanelStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [mediaFilter, setMediaFilter] = useState("all");
   const [sortBy, setSortBy] = useState<"name" | "type" | "duration" | "size">(
     "name"
   );
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+  const { highlightMediaId, clearHighlight } = useMediaPanelStore();
+  const { highlightedId, registerElement } = useHighlightScroll(
+    highlightMediaId,
+    clearHighlight
+  );
 
   const processFiles = async (files: FileList | File[]) => {
     if (!files || files.length === 0) return;
@@ -91,16 +95,13 @@ export function MediaView() {
     setIsProcessing(true);
     setProgress(0);
     try {
-      // Process files (extract metadata, generate thumbnails, etc.)
       const processedItems = await processMediaFiles(files, (p) =>
         setProgress(p)
       );
-      // Add each processed media item to the store
       for (const item of processedItems) {
-        await addMediaItem(activeProject.id, item);
+        await addMediaFile(activeProject.id, item);
       }
     } catch (error) {
-      // Show error toast if processing fails
       console.error("Error processing files:", error);
       toast.error("Failed to process files");
     } finally {
@@ -117,13 +118,11 @@ export function MediaView() {
   const handleFileSelect = () => fileInputRef.current?.click(); // Open file picker
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // When files are selected via file picker, process them
     if (e.target.files) processFiles(e.target.files);
     e.target.value = ""; // Reset input
   };
 
   const handleRemove = async (e: React.MouseEvent, id: string) => {
-    // Remove a media item from the store
     e.stopPropagation();
 
     if (!activeProject) {
@@ -131,8 +130,7 @@ export function MediaView() {
       return;
     }
 
-    // Media store now handles cascade deletion automatically
-    await removeMediaItem(activeProject.id, id);
+    await removeMediaFile(activeProject.id, id);
   };
 
   const formatDuration = (duration: number) => {
@@ -142,28 +140,15 @@ export function MediaView() {
     return `${min}:${sec.toString().padStart(2, "0")}`;
   };
 
-  const [filteredMediaItems, setFilteredMediaItems] = useState(mediaItems);
-
-  useEffect(() => {
-    let filtered = mediaItems.filter((item) => {
+  const filteredMediaItems = useMemo(() => {
+    let filtered = mediaFiles.filter((item) => {
       if (item.ephemeral) return false;
-      if (mediaFilter && mediaFilter !== "all" && item.type !== mediaFilter) {
-        return false;
-      }
-
-      if (
-        searchQuery &&
-        !item.name.toLowerCase().includes(searchQuery.toLowerCase())
-      ) {
-        return false;
-      }
-
       return true;
     });
 
     filtered.sort((a, b) => {
-      let valueA: any;
-      let valueB: any;
+      let valueA: string | number;
+      let valueB: string | number;
 
       switch (sortBy) {
         case "name":
@@ -191,8 +176,8 @@ export function MediaView() {
       return 0;
     });
 
-    setFilteredMediaItems(filtered);
-  }, [mediaItems, mediaFilter, searchQuery, sortBy, sortOrder]);
+    return filtered;
+  }, [mediaFiles, sortBy, sortOrder]);
 
   const previewComponents = useMemo(() => {
     const previews = new Map<string, React.ReactNode>();
@@ -206,7 +191,7 @@ export function MediaView() {
             <img
               src={item.url}
               alt={item.name}
-              className="max-w-full max-h-full object-contain"
+              className="w-full max-h-full object-cover"
               loading="lazy"
             />
           </div>
@@ -271,7 +256,7 @@ export function MediaView() {
     return previews;
   }, [filteredMediaItems]);
 
-  const renderPreview = (item: MediaItem) => previewComponents.get(item.id);
+  const renderPreview = (item: MediaFile) => previewComponents.get(item.id);
 
   return (
     <>
@@ -435,7 +420,7 @@ export function MediaView() {
           </div>
         </div>
 
-        <div className="h-full w-full overflow-y-auto scrollbar-thin">
+        <div className="h-full w-full overflow-y-auto scrollbar-thin pt-1">
           <div className="flex-1 p-3 pt-0 w-full">
             {isDragOver || filteredMediaItems.length === 0 ? (
               <MediaDragOverlay
@@ -450,13 +435,16 @@ export function MediaView() {
                 filteredMediaItems={filteredMediaItems}
                 renderPreview={renderPreview}
                 handleRemove={handleRemove}
+                highlightedId={highlightedId}
+                registerElement={registerElement}
               />
             ) : (
               <ListView
                 filteredMediaItems={filteredMediaItems}
                 renderPreview={renderPreview}
                 handleRemove={handleRemove}
-                formatDuration={formatDuration}
+                highlightedId={highlightedId}
+                registerElement={registerElement}
               />
             )}
           </div>
@@ -470,11 +458,17 @@ function GridView({
   filteredMediaItems,
   renderPreview,
   handleRemove,
+  highlightedId,
+  registerElement,
 }: {
-  filteredMediaItems: MediaItem[];
-  renderPreview: (item: MediaItem) => React.ReactNode;
+  filteredMediaItems: MediaFile[];
+  renderPreview: (item: MediaFile) => React.ReactNode;
   handleRemove: (e: React.MouseEvent, id: string) => Promise<void>;
+  highlightedId: string | null;
+  registerElement: (id: string, element: HTMLElement | null) => void;
 }) {
+  const { addElementAtTime } = useTimelineStore();
+
   return (
     <div
       className="grid gap-2"
@@ -483,27 +477,26 @@ function GridView({
       }}
     >
       {filteredMediaItems.map((item) => (
-        <MediaItemWithContextMenu
-          key={item.id}
-          item={item}
-          onRemove={handleRemove}
-        >
-          <DraggableMediaItem
-            name={item.name}
-            preview={renderPreview(item)}
-            dragData={{
-              id: item.id,
-              type: item.type,
-              name: item.name,
-            }}
-            showPlusOnDrag={false}
-            onAddToTimeline={(currentTime) =>
-              useTimelineStore.getState().addMediaAtTime(item, currentTime)
-            }
-            rounded={false}
-            variant="card"
-          />
-        </MediaItemWithContextMenu>
+        <div key={item.id} ref={(el) => registerElement(item.id, el)}>
+          <MediaItemWithContextMenu item={item} onRemove={handleRemove}>
+            <DraggableMediaItem
+              name={item.name}
+              preview={renderPreview(item)}
+              dragData={{
+                id: item.id,
+                type: item.type,
+                name: item.name,
+              }}
+              showPlusOnDrag={false}
+              onAddToTimeline={(currentTime) =>
+                addElementAtTime(item, currentTime)
+              }
+              rounded={false}
+              variant="card"
+              isHighlighted={highlightedId === item.id}
+            />
+          </MediaItemWithContextMenu>
+        </div>
       ))}
     </div>
   );
@@ -513,36 +506,39 @@ function ListView({
   filteredMediaItems,
   renderPreview,
   handleRemove,
-  formatDuration,
+  highlightedId,
+  registerElement,
 }: {
-  filteredMediaItems: MediaItem[];
-  renderPreview: (item: MediaItem) => React.ReactNode;
+  filteredMediaItems: MediaFile[];
+  renderPreview: (item: MediaFile) => React.ReactNode;
   handleRemove: (e: React.MouseEvent, id: string) => Promise<void>;
-  formatDuration: (duration: number) => string;
+  highlightedId: string | null;
+  registerElement: (id: string, element: HTMLElement | null) => void;
 }) {
+  const { addElementAtTime } = useTimelineStore();
+
   return (
     <div className="space-y-1">
       {filteredMediaItems.map((item) => (
-        <MediaItemWithContextMenu
-          key={item.id}
-          item={item}
-          onRemove={handleRemove}
-        >
-          <DraggableMediaItem
-            name={item.name}
-            preview={renderPreview(item)}
-            dragData={{
-              id: item.id,
-              type: item.type,
-              name: item.name,
-            }}
-            showPlusOnDrag={false}
-            onAddToTimeline={(currentTime) =>
-              useTimelineStore.getState().addMediaAtTime(item, currentTime)
-            }
-            variant="compact"
-          />
-        </MediaItemWithContextMenu>
+        <div key={item.id} ref={(el) => registerElement(item.id, el)}>
+          <MediaItemWithContextMenu item={item} onRemove={handleRemove}>
+            <DraggableMediaItem
+              name={item.name}
+              preview={renderPreview(item)}
+              dragData={{
+                id: item.id,
+                type: item.type,
+                name: item.name,
+              }}
+              showPlusOnDrag={false}
+              onAddToTimeline={(currentTime) =>
+                addElementAtTime(item, currentTime)
+              }
+              variant="compact"
+              isHighlighted={highlightedId === item.id}
+            />
+          </MediaItemWithContextMenu>
+        </div>
       ))}
     </div>
   );

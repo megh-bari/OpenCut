@@ -4,6 +4,7 @@ import {
   Scissors,
   Trash2,
   Copy,
+  Search,
   RefreshCw,
   EyeOff,
   Eye,
@@ -29,6 +30,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "../../ui/context-menu";
+import { useMediaPanelStore } from "../media-panel/store";
 
 export function TimelineElement({
   element,
@@ -38,10 +40,8 @@ export function TimelineElement({
   onElementMouseDown,
   onElementClick,
 }: TimelineElementProps) {
-  const { mediaItems } = useMediaStore();
+  const { mediaFiles } = useMediaStore();
   const {
-    updateElementTrim,
-    updateElementDuration,
     removeElementFromTrack,
     removeElementFromTrackWithRipple,
     dragState,
@@ -51,12 +51,13 @@ export function TimelineElement({
     rippleEditingEnabled,
     toggleElementHidden,
     toggleElementMuted,
+    copySelected,
   } = useTimelineStore();
   const { currentTime } = usePlaybackStore();
 
   const mediaItem =
     element.type === "media"
-      ? mediaItems.find((item) => item.id === element.mediaId)
+      ? mediaFiles.find((file) => file.id === element.mediaId)
       : null;
   const hasAudio = mediaItem?.type === "audio" || mediaItem?.type === "video";
 
@@ -65,9 +66,9 @@ export function TimelineElement({
       element,
       track,
       zoomLevel,
-      onUpdateTrim: updateElementTrim,
-      onUpdateDuration: updateElementDuration,
     });
+
+  const { requestRevealMedia } = useMediaPanelStore.getState();
 
   const effectiveDuration =
     element.duration - element.trimStart - element.trimEnd;
@@ -114,6 +115,11 @@ export function TimelineElement({
         (element.duration - element.trimStart - element.trimEnd) +
         0.1,
     });
+  };
+
+  const handleElementCopyContext = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    copySelected();
   };
 
   const handleElementDeleteContext = (e: React.MouseEvent) => {
@@ -166,6 +172,16 @@ export function TimelineElement({
     input.click();
   };
 
+  const handleRevealInMedia = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (element.type !== "media") {
+      toast.error("Reveal is only available for media clips");
+      return;
+    }
+
+    requestRevealMedia(element.mediaId);
+  };
+
   const renderElementContent = () => {
     if (element.type === "text") {
       return (
@@ -176,7 +192,7 @@ export function TimelineElement({
     }
 
     // Render media element ->
-    const mediaItem = mediaItems.find((item) => item.id === element.mediaId);
+    const mediaItem = mediaFiles.find((file) => file.id === element.mediaId);
     if (!mediaItem) {
       return (
         <span className="text-xs text-foreground/80 truncate">
@@ -320,6 +336,10 @@ export function TimelineElement({
           <Scissors className="h-4 w-4 mr-2" />
           Split at playhead
         </ContextMenuItem>
+        <ContextMenuItem onClick={handleElementCopyContext}>
+          <Copy className="h-4 w-4 mr-2" />
+          Copy element
+        </ContextMenuItem>
         <ContextMenuItem onClick={handleToggleElementContext}>
           {hasAudio ? (
             isMuted ? (
@@ -348,10 +368,16 @@ export function TimelineElement({
           Duplicate {element.type === "text" ? "text" : "clip"}
         </ContextMenuItem>
         {element.type === "media" && (
-          <ContextMenuItem onClick={handleReplaceClip}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Replace clip
-          </ContextMenuItem>
+          <>
+            <ContextMenuItem onClick={handleRevealInMedia}>
+              <Search className="h-4 w-4 mr-2" />
+              Reveal in media
+            </ContextMenuItem>
+            <ContextMenuItem onClick={handleReplaceClip}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Replace clip
+            </ContextMenuItem>
+          </>
         )}
         <ContextMenuSeparator />
         <ContextMenuItem
