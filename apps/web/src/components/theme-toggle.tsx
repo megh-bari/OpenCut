@@ -18,7 +18,11 @@ export function ThemeToggle({ className }: ThemeToggleProps) {
       className="h-7"
       onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
     >
-      <Sun className="!size-[1.1rem]" />
+      {theme === "dark" ? (
+        <Moon className="!size-[1.1rem]" />
+      ) : (
+        <Sun className="!size-[1.1rem]" />
+      )}
       <span className="sr-only">{theme === "dark" ? "Light" : "Dark"}</span>
     </Button>
   );
