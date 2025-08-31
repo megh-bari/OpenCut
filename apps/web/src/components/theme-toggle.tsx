@@ -25,7 +25,7 @@ export function ThemeToggle({ className }: ThemeToggleProps) {
     <Button
       size="icon"
       variant="text"
-      className={`h-7 ${className ?? ""}`}
+      // className={`h-7 ${className ?? ""}`} // If you want the toggle button to have some extra space on the right side, then uncomment this className line. If you don’t care, just leave it as it is — both ways look fine
       type="button"
       onClick={() => setTheme(isDark ? "light" : "dark")}
       aria-pressed={!isDark}
