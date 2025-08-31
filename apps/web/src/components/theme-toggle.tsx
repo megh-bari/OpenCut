@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { Button } from "./ui/button";
 import { Sun, Moon } from "lucide-react";
 import { useTheme } from "next-themes";
@@ -9,21 +10,34 @@ interface ThemeToggleProps {
 }
 
 export function ThemeToggle({ className }: ThemeToggleProps) {
-  const { theme, setTheme } = useTheme();
+  const { resolvedTheme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
+
+  if (!mounted) {
+    return null; // prevents hydration mismatch
+  }
+
+  const isDark = resolvedTheme === "dark";
 
   return (
     <Button
       size="icon"
       variant="text"
-      className="h-7"
-      onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+      className={`h-7 ${className ?? ""}`}
+      type="button"
+      onClick={() => setTheme(isDark ? "light" : "dark")}
+      aria-pressed={!isDark}
     >
-      {theme === "dark" ? (
-        <Moon className="!size-[1.1rem]" />
+      {isDark ? (
+        <Moon className="!size-[1.1rem]" aria-hidden="true" />
       ) : (
-        <Sun className="!size-[1.1rem]" />
+        <Sun className="!size-[1.1rem]" aria-hidden="true" />
       )}
-      <span className="sr-only">{theme === "dark" ? "Light" : "Dark"}</span>
+      <span className="sr-only">
+        Switch to {isDark ? "light" : "dark"} mode
+      </span>
     </Button>
   );
 }
